@@ -1,4 +1,5 @@
 from anytree import Node, RenderTree
+import numpy as np
 import pandas as pd
 from pandas.api.types import is_categorical_dtype
 from sklearn.model_selection import train_test_split
@@ -33,7 +34,7 @@ class DecisionTree:
         self.train, self.val = train_test_split(data, test_size=0.33, random_state=42)
 
         # Generates the decision tree.
-        self.root = self.generate_tree(val=self.val)
+        self.root = self.generate_tree()
 
     def generate_tree(self):
         """
@@ -43,7 +44,7 @@ class DecisionTree:
         """
         # Get attribute names, target and possible classes.
         attrs = self.train.columns[:-1]
-        target = self.train.iloc[:, -1]
+        target = self.train['target']
         classes = target.cat.categories
 
         # Out of recursion cases:
@@ -57,41 +58,66 @@ class DecisionTree:
 
         # Recursion case.
         # Select optimal attribute.
-        opt_attr, partition_rules, is_categorical = self.select_attr()
+        opt_attr = self.select_attr()
 
         # Create root node.
         root = Node(opt_attr, val=self.val)
 
         # Branching.
         # if self.algorithm == 'C4.5':
-        #     if is_categorical:
-        #         for e in 
+
         # elif self.algorithm == 'CART':
         #     raise NotImplementedError
 
-
-    def select_attr(self, criterion='gini'):
+    def select_attr(self):
         """
         Selects optimal attribute for decision-tree branching.
-
-        criterion = 'gini' or 'entropy'
-
-        Returns:
-
-        opt_attr: the attribute that yields the largest information gain
-
-        partition_rules: a list of pandas query rules
-
-        is_categorical: whether the selected attribute is categorical
         """
-        assert criterion in {'gini', 'entropy'}, "criterion = 'gini' or 'entropy'"
-        if criterion == 'entropy':
-            
+        if self.algorithm == 'C4.5':
+            pass
+        else:
+            pass
 
-        return opt_attr, partition_rules, is_categorical
+        opt_attr = None
+
+        return opt_attr
+
+    def evaluate_split(self, attr):
+        """
+        Returns information gain ratio in C4.5.
+
+        Returns weighted Gini index in CART.
+        """
+        def get_proportion(df, attr):
+            return df[attr].value_counts()/df[attr].shape[0]
+
+        def get_entropy(df, attr):
+            proportion = get_proportion(df, attr)
+            return - (proportion*np.log2(proportion)).sum()
+
+        def get_cond_entropy(df, attr, threshold=None):
+            if is_categorical_dtype(df[attr].dtype):
+                sub_entropies = df.groupby(attr).apply(lambda df: get_entropy(df, 'target'))
+                proportion = get_proportion(df, attr)
+                return (sub_entropies*proportion).sum()
+            else:
+                # TODO binary split
+                assert threshold is not None, 'Must provide threshold for continuous variables.'
+
+        if self.algorithm == 'C4.5':
+            df = self.train[[attr, 'target']]
+            entropy = get_entropy(df, 'target')
+            cond_entropy = get_cond_entropy(df, attr)
+            info_gain = entropy - cond_entropy
+            intrinsic_value = get_entropy(df, attr)
+            return info_gain / intrinsic_value
+        else:
+
+
 
 
 if __name__ == '__main__':
     df = pd.read_csv('data/balance_scale.csv')
     config = {'algorithm': 'C4.5', 'penalty_func': '', 'penalty_coeff': 1}
     dt = DecisionTree(df, config)
+    dt.evaluate_split('left_weight', criterion='entropy')

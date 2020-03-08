@@ -1,5 +1,4 @@
 # TODO Penalty function
-# TODO Gini function
 # TODO Memoization decorator for postorder postpruning
 
 import pandas as pd
@@ -11,7 +10,7 @@ def preprocess(df):
     """
     Converts each column's dtype to either numeric (with > 10 unique values) or ordered categorical.
 
-    The last column is the target, which must be categorical.
+    The last column is the target, which must be categorical and named 'target'.
 
     Does nothing if this requirement is already satisfied.
     """
@@ -26,6 +25,5 @@ def preprocess(df):
         df[col] = df[col].cat.as_ordered()
 
     assert is_categorical_dtype(df.iloc[:, -1].dtype), 'Target must be categorical.'
+    df.columns = [*df.columns[:-1], 'target']
     return df
-
-def 
