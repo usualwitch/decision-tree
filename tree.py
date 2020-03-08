@@ -103,16 +103,17 @@ class DecisionTree:
             else:
                 # TODO binary split
                 assert threshold is not None, 'Must provide threshold for continuous variables.'
+                # bool attr
 
+        df = self.train[[attr, 'target']]
         if self.algorithm == 'C4.5':
-            df = self.train[[attr, 'target']]
             entropy = get_entropy(df, 'target')
             cond_entropy = get_cond_entropy(df, attr)
             info_gain = entropy - cond_entropy
             intrinsic_value = get_entropy(df, attr)
             return info_gain / intrinsic_value
         else:
-
+            
 
 
 
@@ -120,4 +121,4 @@ if __name__ == '__main__':
     df = pd.read_csv('data/balance_scale.csv')
     config = {'algorithm': 'C4.5', 'penalty_func': '', 'penalty_coeff': 1}
     dt = DecisionTree(df, config)
-    dt.evaluate_split('left_weight', criterion='entropy')
+    dt.evaluate_split('left_weight')
