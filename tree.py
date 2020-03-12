@@ -31,37 +31,37 @@ class DecisionTree:
 
         # Preprocesses the data.
         data = preprocess(data)
-        self.train, self.val = train_test_split(data, test_size=0.33, random_state=42)
+        train, val = train_test_split(data, test_size=0.33, random_state=42)
 
         # Generates the decision tree.
-        self.root = self.generate_tree()
+        self.root = self.generate_tree(train, val)
 
-    def generate_tree(self):
+    def generate_tree(self, train, val):
         """
         Generates a decision tree from training data, retaining validation set in each node for postpruning.
 
         data.columns = [attributes, target]. All attributes are transformed into categorical variables.
         """
         # Get attribute names, target and possible classes.
-        attrs = self.train.columns[:-1]
-        target = self.train['target']
+        attrs = train.columns[:-1]
+        target = train['target']
         classes = target.cat.categories
 
         # Out of recursion cases:
         # Case 1: There is only one class.
         if len(classes) == 1:
-            return Node(classes[0], val=self.val)
+            return Node(classes[0], val=val)
         # Case 2: There is no valid attribute, i.e. all values are the same for samples, or attrs is empty.
-        valid_attrs = [a for a in attrs if self.train[a].nunique() > 1]
+        valid_attrs = [a for a in attrs if train[a].nunique() > 1]
         if not valid_attrs:
-            return Node(target.mode(), val=self.val)
+            return Node(target.mode(), val=val)
 
         # Recursion case.
         # Select optimal attribute.
-        opt_attr = self.select_attr()
+        opt_attr = self.select_attr(train, attrs)
 
         # Create root node.
-        root = Node(opt_attr, val=self.val)
+        root = Node(opt_attr, val=val)
 
         # Branching.
         # if self.algorithm == 'C4.5':
@@ -69,12 +69,12 @@ class DecisionTree:
         # elif self.algorithm == 'CART':
         #     raise NotImplementedError
 
-    def select_attr(self):
+    def select_attr(self, train, attrs):
         """
         Selects optimal attribute for decision-tree branching.
         """
         if self.algorithm == 'C4.5':
-            pass
+            
         else:
             pass
 
@@ -82,7 +82,7 @@ class DecisionTree:
 
         return opt_attr
 
-    def evaluate_split(self, attr):
+    def evaluate_split(self, attr, threshold=None):
         """
         Returns information gain ratio in C4.5.
 
@@ -101,24 +101,39 @@ class DecisionTree:
                 proportion = get_proportion(df, attr)
                 return (sub_entropies*proportion).sum()
             else:
-                # TODO binary split
-                assert threshold is not None, 'Must provide threshold for continuous variables.'
-                # bool attr
+                if threshold is None:
+                    raise ValueError('Must provide threshold for continuous variables.')
+                r_part = df[df[attr] >= threshold]
+                l_part = df[df[attr] < threshold]     
+                r_entropy = get_entropy(r_part, 'target')
+                l_entropy = get_entropy(l_part, 'target')
+                return (r_entropy*r_part.shape[0] + l_entropy*l_part.shape[0])/(r_part.shape[0] + l_part.shape[0])
+
+        def get_gini(df, attr):
+            proportion = get_proportion(df, attr)
+            return 1 - (proportion**2).sum()
+
+        def get_cond_gini(df, attr, threshold):
+            """The data is divided into >= threshold part and < threshold part."""
+            r_part = df[df[attr] >= threshold]
+            l_part = df[df[attr] < threshold]
+            r_gini = get_gini(r_part, 'target')
+            l_gini = get_gini(l_part, 'target')
+            return (r_gini*r_part.shape[0] + l_gini*l_part.shape[0])/(r_part.shape[0] + l_part.shape[0])
 
         df = self.train[[attr, 'target']]
         if self.algorithm == 'C4.5':
             entropy = get_entropy(df, 'target')
-            cond_entropy = get_cond_entropy(df, attr)
+            cond_entropy = get_cond_entropy(df, attr, threshold)
             info_gain = entropy - cond_entropy
             intrinsic_value = get_entropy(df, attr)
             return info_gain / intrinsic_value
         else:
-            
-
+            return get_cond_gini(df, attr, threshold)
 
 
 if __name__ == '__main__':
-    df = pd.read_csv('data/balance_scale.csv')
-    config = {'algorithm': 'C4.5', 'penalty_func': '', 'penalty_coeff': 1}
+    df = pd.read_csv('data/knowledge.csv')
+    config = {'algorithm': 'CART', 'penalty_func': '', 'penalty_coeff': 1}
     dt = DecisionTree(df, config)
-    dt.evaluate_split('left_weight')
+    print(dt.evaluate_split(df.columns[1], 0.2))
