@@ -37,7 +37,7 @@ class DecisionTree:
         self.root = self.generate_tree(train, val)
 
         # Postprune the tree in postorder traversal.
-        self.postprune()
+        self.postprune(self.root)
 
     def generate_tree(self, train, val):
         """
@@ -176,19 +176,35 @@ class DecisionTree:
         else:
             return get_cond_gini(df, attr, threshold)
 
-    def postprune(self):
-        """Postprune self.root in postorder traversal"""
-        def postorder(node, func):
-            if not node.children:
-                for child in node.children:
-                    postorder(child)
-            func(node)
-        
-        
+    def postprune(self, node):
+        """Postprune self.root in postorder traversal. Only use this function on a node s.t. node.height >= 1."""
+
+        def prune(node):
+            """Only use this function on a node s.t. node.height == 1."""
+            def count_correct_cases(node):
+                return node.val[node.val['target'] == node.name].shape[0]
+
+            # If we discard node's branches, node.val will be classified to node.name class.
+            count_prune = count_correct_cases(node)
+            count_no_prune = sum(count_correct_cases(sub_node) for sub_node in node.children)
+            if count_prune >= count_no_prune:
+                node.children = ()
+
+        if node.height == 1:
+            prune(node)
+        elif node.height > 1:
+            for child in node.children:
+                if child.is_leaf:
+                    continue
+                # Recurse on a non-leaf child.
+                self.postprune(child)
+            if node.height == 1:
+                prune(node)
+
 
 if __name__ == '__main__':
     df = pd.read_csv('data/knowledge.csv')
     config = {'algorithm': 'C4.5', 'penalty_func': '', 'penalty_coeff': 1}
     dt = DecisionTree(df, config)
-    # for pre, fill, node in RenderTree(dt.root):
-    #     print("%s%s" % (pre, node.attr))
+    for pre, fill, node in RenderTree(dt.root):
+        print("%s%s" % (pre, node.attr))
