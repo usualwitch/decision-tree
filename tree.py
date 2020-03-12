@@ -36,53 +36,98 @@ class DecisionTree:
         # Generates the decision tree.
         self.root = self.generate_tree(train, val)
 
+        # Postprune the tree in postorder traversal.
+        self.postprune()
+
     def generate_tree(self, train, val):
         """
         Generates a decision tree from training data, retaining validation set in each node for postpruning.
-
-        data.columns = [attributes, target]. All attributes are transformed into categorical variables.
+        Tree structure:
+            leaf node: Node(classified_class, attr='leaf', threshold, val)
+            non-leaf node: Node(majority_class, attr=opt_attr, threshold, val)
         """
         # Get attribute names, target and possible classes.
         attrs = train.columns[:-1]
         target = train['target']
         classes = target.cat.categories
 
-        # Out of recursion cases:
+        # Out of recursion cases return a leaf node.
         # Case 1: There is only one class.
         if len(classes) == 1:
-            return Node(classes[0], val=val)
+            return Node(classes[0], attr='leaf', val=val)
         # Case 2: There is no valid attribute, i.e. all values are the same for samples, or attrs is empty.
         valid_attrs = [a for a in attrs if train[a].nunique() > 1]
         if not valid_attrs:
-            return Node(target.mode(), val=val)
+            return Node(target.mode()[0], attr='leaf', val=val)
+        # Keep only the valid attributes and the target column.
+        train = train[valid_attrs + ['target']]
 
         # Recursion case.
         # Select optimal attribute.
-        opt_attr = self.select_attr(train, attrs)
+        opt_attr, threshold = self.select_attr(train)
 
         # Create root node.
-        root = Node(opt_attr, val=val)
+        root = Node(target.mode()[0], attr=opt_attr, val=val)
 
         # Branching.
-        # if self.algorithm == 'C4.5':
+        # Delete the opt_attr from attr set only if C4.5 and categorical.
+        if is_categorical_dtype(train[opt_attr].dtype) and self.algorithm == 'C4.5':
+            for e in train[opt_attr].cat.categories:
+                branch_train = train[train[opt_attr] == e]
+                branch_val = val[val[opt_attr] == e]
+                if branch_train.empty:
+                    # Generate a leaf node.
+                    Node(target.mode()[0], parent=root, attr='leaf', threshold=e, val=branch_val)
+                else:
+                    branch_train = branch_train.drop(columns=[opt_attr])
+                    branch_val = branch_val.drop(columns=[opt_attr])
+                    branch = self.generate_tree(branch_train, branch_val)
+                    branch.parent = root
+                    branch.threshold = e
+        else:
+            for e in ['>=', '<']:
+                branch_train = train.query(f'{opt_attr} {e} {threshold}')
+                branch_val = val.query(f'{opt_attr} {e} {threshold}')
+                if branch_train.empty:
+                    Node(target.mode()[0], parent=root, val=branch_val)
+                else:
+                    branch = self.generate_tree(branch_train, branch_val)
+                    branch.parent = root
+                    branch.threshold = f'{e} {threshold}'
+        return root
 
-        # elif self.algorithm == 'CART':
-        #     raise NotImplementedError
-
-    def select_attr(self, train, attrs):
+    def select_attr(self, train):
         """
         Selects optimal attribute for decision-tree branching.
         """
-        if self.algorithm == 'C4.5':
-            
-        else:
-            pass
+        # Store the scores for each attribute and the threshold for binary split
+        result = {'attr_name': [], 'score': [], 'threshold': []}
+        for attr in train.columns[:-1]:
+            result['attr_name'].append(attr)
+            if is_categorical_dtype(train[attr].dtype):
+                if self.algorithm == 'C4.5':
+                    result['score'].append(self.evaluate_split(train, attr))
+                    result['threshold'].append(np.nan)
+                    continue
+                else:
+                    # The categorical variable is sorted.
+                    cut_points = train[attr].cat.categories[1:]
+            else:
+                # Try using the midpoints of continous variable, all but the smallest point of discrete variable as threshold.
+                points = np.unique(np.sort(train[attr].values))
+                cut_points = (points[:-1] + points[1:])/2
+            sub_scores = pd.DataFrame(cut_points, columns=['threshold'])
+            sub_scores['score'] = sub_scores['threshold'].apply(lambda x: self.evaluate_split(train, attr, threshold=x))
+            sub_opt = sub_scores.iloc[sub_scores['score'].idxmax()]
+            result['score'].append(sub_opt['score'])
+            result['threshold'].append(sub_opt['threshold'])
 
-        opt_attr = None
+        result = pd.DataFrame(result)
+        opt = result.iloc[result['score'].idxmax()]
+        # opt['threshold'] is np.nan if C4.5 and categorical.
+        return opt['attr_name'], opt['threshold']
 
-        return opt_attr
-
-    def evaluate_split(self, attr, threshold=None):
+    def evaluate_split(self, train, attr, threshold=None):
         """
         Returns information gain ratio in C4.5.
 
@@ -104,7 +149,7 @@ class DecisionTree:
                 if threshold is None:
                     raise ValueError('Must provide threshold for continuous variables.')
                 r_part = df[df[attr] >= threshold]
-                l_part = df[df[attr] < threshold]     
+                l_part = df[df[attr] < threshold]
                 r_entropy = get_entropy(r_part, 'target')
                 l_entropy = get_entropy(l_part, 'target')
                 return (r_entropy*r_part.shape[0] + l_entropy*l_part.shape[0])/(r_part.shape[0] + l_part.shape[0])
@@ -121,7 +166,7 @@ class DecisionTree:
             l_gini = get_gini(l_part, 'target')
             return (r_gini*r_part.shape[0] + l_gini*l_part.shape[0])/(r_part.shape[0] + l_part.shape[0])
 
-        df = self.train[[attr, 'target']]
+        df = train[[attr, 'target']]
         if self.algorithm == 'C4.5':
             entropy = get_entropy(df, 'target')
             cond_entropy = get_cond_entropy(df, attr, threshold)
@@ -131,9 +176,19 @@ class DecisionTree:
         else:
             return get_cond_gini(df, attr, threshold)
 
+    def postprune(self):
+        """Postprune self.root in postorder traversal"""
+        def postorder(node, func):
+            if not node.children:
+                for child in node.children:
+                    postorder(child)
+            func(node)
+        
+        
 
 if __name__ == '__main__':
     df = pd.read_csv('data/knowledge.csv')
-    config = {'algorithm': 'CART', 'penalty_func': '', 'penalty_coeff': 1}
+    config = {'algorithm': 'C4.5', 'penalty_func': '', 'penalty_coeff': 1}
     dt = DecisionTree(df, config)
-    print(dt.evaluate_split(df.columns[1], 0.2))
+    # for pre, fill, node in RenderTree(dt.root):
+    #     print("%s%s" % (pre, node.attr))
