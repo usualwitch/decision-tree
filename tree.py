@@ -213,11 +213,3 @@ class DecisionTree:
                 self.postprune(child)
             if node.height == 1:
                 prune(node)
-
-
-# if __name__ == '__main__':
-#     df = pd.read_csv('data/knowledge.csv')
-#     config = {'algorithm': 'C4.5', 'penalty_func': '', 'penalty_coeff': 1}
-#     dt = DecisionTree(df, config)
-#     for pre, fill, node in RenderTree(dt.root):
-#         print("%s%s" % (pre, node.attr))
