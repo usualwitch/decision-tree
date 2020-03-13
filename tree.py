@@ -27,7 +27,7 @@ class DecisionTree:
         if self.algorithm not in self.ALGO_SET or self.penalty_func not in self.PENALTY_SET:
             raise ValueError(f'The algorithm and the penalty function must be selected out of {self.ALGO_SET} and {self.PENALTY_SET}.')
         if self.penalty_coeff <= 0:
-            raise ValueError('The penalty coefficient must be greater than or equal to 0.')
+            raise ValueError('The penalty coefficient must be greater than 0.')
 
         # Preprocesses the data.
         data = preprocess(data)
@@ -39,11 +39,23 @@ class DecisionTree:
         # Postprune the tree in postorder traversal.
         self.postprune(self.root)
 
+    def __str__(self):
+        tree_str = ''
+        for i, (pre, fill, node) in enumerate(RenderTree(self.root)):
+            if i == 0:
+                tree_str += (self.root.attr + '\n')
+            else:
+                tree_str += (pre + f'{node.threshold} -> {node.attr}\n')
+        return tree_str
+
     def generate_tree(self, train, val):
         """
         Generates a decision tree from training data, retaining validation set in each node for postpruning.
+
         Tree structure:
+
             leaf node: Node(classified_class, attr='leaf', threshold, val)
+
             non-leaf node: Node(majority_class, attr=opt_attr, threshold, val)
         """
         # Get attribute names, target and possible classes.
@@ -54,11 +66,11 @@ class DecisionTree:
         # Out of recursion cases return a leaf node.
         # Case 1: There is only one class.
         if len(classes) == 1:
-            return Node(classes[0], attr='leaf', val=val)
+            return Node(classes[0], attr='leaf', threshold='', val=val)
         # Case 2: There is no valid attribute, i.e. all values are the same for samples, or attrs is empty.
         valid_attrs = [a for a in attrs if train[a].nunique() > 1]
         if not valid_attrs:
-            return Node(target.mode()[0], attr='leaf', val=val)
+            return Node(target.mode()[0], attr='leaf', threshold='', val=val)
         # Keep only the valid attributes and the target column.
         train = train[valid_attrs + ['target']]
 
@@ -67,7 +79,7 @@ class DecisionTree:
         opt_attr, threshold = self.select_attr(train)
 
         # Create root node.
-        root = Node(target.mode()[0], attr=opt_attr, val=val)
+        root = Node(target.mode()[0], attr=opt_attr, threshold='', val=val)
 
         # Branching.
         # Delete the opt_attr from attr set only if C4.5 and categorical.
@@ -89,7 +101,8 @@ class DecisionTree:
                 branch_train = train.query(f'{opt_attr} {e} {threshold}')
                 branch_val = val.query(f'{opt_attr} {e} {threshold}')
                 if branch_train.empty:
-                    Node(target.mode()[0], parent=root, val=branch_val)
+                    # Generate a leaf node.
+                    Node(target.mode()[0], parent=root, attr='leaf', threshold=e, val=branch_val)
                 else:
                     branch = self.generate_tree(branch_train, branch_val)
                     branch.parent = root
@@ -202,9 +215,9 @@ class DecisionTree:
                 prune(node)
 
 
-if __name__ == '__main__':
-    df = pd.read_csv('data/knowledge.csv')
-    config = {'algorithm': 'C4.5', 'penalty_func': '', 'penalty_coeff': 1}
-    dt = DecisionTree(df, config)
-    for pre, fill, node in RenderTree(dt.root):
-        print("%s%s" % (pre, node.attr))
+# if __name__ == '__main__':
+#     df = pd.read_csv('data/knowledge.csv')
+#     config = {'algorithm': 'C4.5', 'penalty_func': '', 'penalty_coeff': 1}
+#     dt = DecisionTree(df, config)
+#     for pre, fill, node in RenderTree(dt.root):
+#         print("%s%s" % (pre, node.attr))
