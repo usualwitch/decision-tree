@@ -3,49 +3,68 @@ import numpy as np
 import pandas as pd
 from pandas.api.types import is_categorical_dtype
 from sklearn.model_selection import train_test_split
+import re
 
-from utils import preprocess
+from utils import preprocess, reduced_error_prune
 
 
 class DecisionTree:
 
-    ALGO_SET = {'C4.5', 'CART'}
-    PENALTY_SET = {''}
+    ALGOS = {'C4.5', 'CART'}
+    PRUNE_FUNCS = {'Reduce': reduced_error_prune, 'Pessim': reduced_error_prune, 'Err-comp': reduced_error_prune}
 
-    def __init__(self, data, config={'algorithm': 'CART'}):
-        """
-        Supported algorithms: 'C4.5', 'CART'
-
-        Supported penalty functions: TODO
-
-        The penalty coefficient must be greater than or equal to 0.
-        """
+    def __init__(self, data, algorithm='CART', prune_func=None, max_depth=10):
+        """Supported algorithms: 'C4.5', 'CART'."""
         # Configuration.
-        self.algorithm = config['algorithm']
-        self.penalty_func = config['penalty_func']
-        self.penalty_coeff = config['penalty_coeff']
-        if self.algorithm not in self.ALGO_SET or self.penalty_func not in self.PENALTY_SET:
-            raise ValueError(f'The algorithm and the penalty function must be selected out of {self.ALGO_SET} and {self.PENALTY_SET}.')
-        if self.penalty_coeff <= 0:
-            raise ValueError('The penalty coefficient must be greater than 0.')
+        if algorithm not in self.ALGOS:
+            raise ValueError(f'The algorithm must be one of {self.ALGOS}.')
+        self.algorithm = algorithm
+        self.max_depth = max_depth
 
-        # Preprocesses the data.
+        if prune_func is None:
+            if self.algorithm == 'C4.5':
+                self.prune_func = 'Pessim'
+            else:
+                self.prune_func = 'Err-comp'
+        elif prune_func in self.PRUNE_FUNCS:
+            self.prune_func = prune_func
+        else:
+            raise ValueError(f'The prune function must be one of {set(self.PRUNE_FUNCS)}.')
+
+        # Converts and shuffles the data.
         data = preprocess(data)
-        train, val = train_test_split(data, test_size=0.33, random_state=42)
+        # # Cross validation.
+        # train_size = data.shape[0]*9//10
+        # val_size = data.shape[0] - train_size
+
+        # for i in range(10):
+        #     val = data.iloc[i*val_size:(i+1)*val_size]
+        #     train = pd.concat([data.iloc[:i*val_size], data.iloc[(i+1)*val_size]])
+        if self.algorithm == 'C4.5' and prune_func == 'Pessim':
+            train = data
+            val = pd.DataFrame()
+        else:
+            train, val = train_test_split(data, test_size=0.33)
 
         # Generates the decision tree.
+        self.depth = 0
         self.root = self.generate_tree(train, val)
 
         # Postprune the tree in postorder traversal.
-        self.postprune(self.root)
+        self.postprune(self.root, self.PRUNE_FUNCS[self.prune_func])
 
     def __str__(self):
         tree_str = ''
-        for i, (pre, fill, node) in enumerate(RenderTree(self.root)):
+        for i, (pre, _, node) in enumerate(RenderTree(self.root)):
             if i == 0:
                 tree_str += (self.root.attr + '\n')
             else:
-                tree_str += (pre + f'{node.threshold} -> {node.attr}\n')
+                space_len = len(str(node.parent.threshold)) + 7
+                pre = re.sub(r' '*3, ' '*space_len, pre)
+                if node.attr == 'leaf':
+                    tree_str += (pre + f'{node.threshold} -> {node.name}\n')
+                else:
+                    tree_str += (pre + f'{node.threshold} -> {node.attr}\n')
         return tree_str
 
     def generate_tree(self, train, val):
@@ -59,18 +78,17 @@ class DecisionTree:
             non-leaf node: Node(majority_class, attr=opt_attr, threshold, val)
         """
         # Get attribute names, target and possible classes.
-        attrs = train.columns[:-1]
         target = train['target']
-        classes = target.cat.categories
 
-        # Out of recursion cases return a leaf node.
-        # Case 1: There is only one class.
-        if len(classes) == 1:
-            return Node(classes[0], attr='leaf', threshold='', val=val)
-        # Case 2: There is no valid attribute, i.e. all values are the same for samples, or attrs is empty.
-        valid_attrs = [a for a in attrs if train[a].nunique() > 1]
-        if not valid_attrs:
-            return Node(target.mode()[0], attr='leaf', threshold='', val=val)
+        """
+        Out of recursion cases return a leaf node.
+        Case 1: There is only one class.
+        Case 2: There is no valid attribute, i.e. all values are the same for samples, or attrs is empty.
+        Case 3: Maximum tree depth is reached.
+        """
+        valid_attrs = [a for a in train.columns if a != 'target' and train[a].nunique() > 1]
+        if target.nunique() == 1 or not valid_attrs or self.depth >= self.max_depth:
+            return Node(target.mode()[0], attr='leaf', threshold='', train=train, val=val)
         # Keep only the valid attributes and the target column.
         train = train[valid_attrs + ['target']]
 
@@ -79,17 +97,17 @@ class DecisionTree:
         opt_attr, threshold = self.select_attr(train)
 
         # Create root node.
-        root = Node(target.mode()[0], attr=opt_attr, threshold='', val=val)
+        root = Node(target.mode()[0], attr=opt_attr, threshold='', train=train, val=val)
 
         # Branching.
         # Delete the opt_attr from attr set only if C4.5 and categorical.
         if is_categorical_dtype(train[opt_attr].dtype) and self.algorithm == 'C4.5':
-            for e in train[opt_attr].cat.categories:
+            for e in train[opt_attr].unique():
                 branch_train = train[train[opt_attr] == e]
                 branch_val = val[val[opt_attr] == e]
                 if branch_train.empty:
                     # Generate a leaf node.
-                    Node(target.mode()[0], parent=root, attr='leaf', threshold=e, val=branch_val)
+                    Node(target.mode()[0], parent=root, attr='leaf', threshold=e, train=branch_train, val=branch_val)
                 else:
                     branch_train = branch_train.drop(columns=[opt_attr])
                     branch_val = branch_val.drop(columns=[opt_attr])
@@ -102,11 +120,13 @@ class DecisionTree:
                 branch_val = val.query(f'{opt_attr} {e} {threshold}')
                 if branch_train.empty:
                     # Generate a leaf node.
-                    Node(target.mode()[0], parent=root, attr='leaf', threshold=e, val=branch_val)
+                    Node(target.mode()[0], parent=root, attr='leaf', threshold=e, train=branch_train, val=branch_val)
                 else:
                     branch = self.generate_tree(branch_train, branch_val)
                     branch.parent = root
                     branch.threshold = f'{e} {threshold}'
+        if root.depth >= self.depth:
+            self.depth = root.depth
         return root
 
     def select_attr(self, train):
@@ -124,7 +144,7 @@ class DecisionTree:
                     continue
                 else:
                     # The categorical variable is sorted.
-                    cut_points = train[attr].cat.categories[1:]
+                    cut_points = train[attr].unique()[1:]
             else:
                 # Try using the midpoints of continous variable, all but the smallest point of discrete variable as threshold.
                 points = np.unique(np.sort(train[attr].values))
@@ -173,8 +193,12 @@ class DecisionTree:
 
         def get_cond_gini(df, attr, threshold):
             """The data is divided into >= threshold part and < threshold part."""
-            r_part = df[df[attr] >= threshold]
-            l_part = df[df[attr] < threshold]
+            try:
+                r_part = df[df[attr] >= threshold]
+                l_part = df[df[attr] < threshold]
+            except Exception:
+                r_part = df[df[attr] == threshold]
+                l_part = df[df[attr] != threshold]
             r_gini = get_gini(r_part, 'target')
             l_gini = get_gini(l_part, 'target')
             return (r_gini*r_part.shape[0] + l_gini*l_part.shape[0])/(r_part.shape[0] + l_part.shape[0])
@@ -189,27 +213,18 @@ class DecisionTree:
         else:
             return get_cond_gini(df, attr, threshold)
 
-    def postprune(self, node):
+    def postprune(self, node, prune_func):
         """Postprune self.root in postorder traversal. Only use this function on a node s.t. node.height >= 1."""
-
-        def prune(node):
-            """Only use this function on a node s.t. node.height == 1."""
-            def count_correct_cases(node):
-                return node.val[node.val['target'] == node.name].shape[0]
-
-            # If we discard node's branches, node.val will be classified to node.name class.
-            count_prune = count_correct_cases(node)
-            count_no_prune = sum(count_correct_cases(sub_node) for sub_node in node.children)
-            if count_prune >= count_no_prune:
-                node.children = ()
-
+        pruned = False
         if node.height == 1:
-            prune(node)
+            pruned = prune_func(node)
         elif node.height > 1:
             for child in node.children:
                 if child.is_leaf:
                     continue
                 # Recurse on a non-leaf child.
-                self.postprune(child)
+                self.postprune(child, prune_func)
             if node.height == 1:
-                prune(node)
+                pruned = prune_func(node)
+        if pruned:
+            node.attr = 'leaf'
