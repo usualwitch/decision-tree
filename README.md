@@ -4,10 +4,6 @@ An implementation of simplified C4.5 and CART algorithms.
 
 A 10-fold CV is applied to evaluate the performance of algorithms.
 
-- [Decision Tree](#decision-tree)
-  - [Usage](#usage)
-  - [License](#license)
-
 ## Usage
 
 Clone the repo and run the code.
