@@ -124,10 +124,7 @@ $\alpha$ is selected out of $\{\alpha^1, \ldots, \alpha^m\}$ by 10-fold cross va
 2. Mingers, J. An Empirical Comparison of Pruning Methods for Decision Tree Induction. Machine Learning, 4, 227–243 (1989).
    https://doi.org/10.1023/A:1022604100933
 
-3. ESL
-
-4. Decision tree pruning. Wikipedia.
-   https://en.wikipedia.org/wiki/Decision_tree_pruning
+3. Hastie, T.; Tibshirani, R. & Friedman, J. (2001), The Elements of Statistical Learning, Springer New York Inc. , New York, NY, USA (2001).
 
 ## License
 
