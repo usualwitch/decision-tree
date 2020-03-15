@@ -73,13 +73,20 @@ For a sub-tree $T_t$, whose root is node t, the corrected error rate is thus
 
 $$r'(T_t) = \frac{\sum(e(i) + 1/2)}{\sum N(i)} = \frac{\sum e(i) + N_t/2}{N(t)}$$
 
-where $N_t$ is the number of leaves in $T_t$.
+where $N_t$ is the number of leaves in $T_t$. Since the expressions for $r'(t)$ and $r'(T_t)$ share the same denominator, we can instead calculate
+
+$$n'(t) = e(t) + 1/2 \  \text{for a node}$$
+$$n'(T_t) = \sum e(i) + N_T/2 \ \text{for a sub-tree}$$
 
 With the training data, the sub-tree will always make fewer errors than the corresponding node. But this is not so if the corrected figures are used, since they also depend on the number of leaves. However, it is likely that even this corrected estimate of the number of misclassifications made by the sub-tree will be optimistic. So the algorithm only keeps the sub-tree if its corrected figure is more than one standard error better than the figure for the node.
 
 The standard error is derived from binomial distribution $B(N(t), p)$, where $p = n'(T_t)/N(t)$.
 
 $$ SE(n'(T_t)) = \sqrt{N(t) \times p \times (1-p)} = \sqrt{\frac{n'(T_t) \times (N(t) - n'(T_t))}{N(t)}}$$
+
+The sub-tree $T_t$ is replaced with a single node $t$ if
+
+$$ n'(T_t) - n'(t) > SE(n'(T_t)) $$
 
 ### CART
 
