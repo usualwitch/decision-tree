@@ -1,6 +1,5 @@
 ```html
-<!DOCTYPE html>
-    <html>
+<html>
     <head>
         <meta charset="UTF-8">
         <title>Decision Tree</title>
@@ -178,5 +177,5 @@ M1001 80H400000v40H1017z'/></svg></span></span></span><span class="vlist-s">​<
 <p><a href="https://choosealicense.com/licenses/mit/">MIT</a></p>
 
     </body>
-    </html>
+</html>
 ```
