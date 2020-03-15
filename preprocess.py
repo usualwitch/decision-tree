@@ -22,4 +22,4 @@ def preprocess(df):
     if not is_categorical_dtype(df.iloc[:, -1].dtype):
         raise ValueError('Target must be categorical.')
     df.columns = [*df.columns[:-1], 'target']
-    return df.sample(frac=1)
+    return df

@@ -13,9 +13,9 @@ import prune
 class DecisionTree:
 
     ALGOS = {'C4.5', 'CART'}
-    PRUNE_FUNCS = {'Reduce': prune.reduced_error, 'Pessim': prune.pessimistic_error, 'Err-comp': prune.error_complexity}
+    PRUNE_FUNCS = {'Reduce': prune.reduced_error, 'Pessim': prune.pessimistic_error}
 
-    def __init__(self, data, algorithm='CART', prune_func=None, max_depth=100):
+    def __init__(self, data, algorithm='CART', prune_func=None, max_depth=10):
         """Supported algorithms: 'C4.5', 'CART'."""
         # Configuration.
         if algorithm not in self.ALGOS:
@@ -23,36 +23,44 @@ class DecisionTree:
         self.algorithm = algorithm
         self.max_depth = max_depth
 
-        if prune_func is None:
+        if self.prune_func in self.PRUNE_FUNCS:
+            if self.algorithm == 'C4.5':
+                self.prune_func = prune_func
+            else:
+                raise ValueError('CART algorithm does not support other prune methods.')
+        elif prune_func is None:
             if self.algorithm == 'C4.5':
                 self.prune_func = 'Pessim'
-            else:
-                self.prune_func = 'Err-comp'
-        elif prune_func in self.PRUNE_FUNCS:
-            self.prune_func = prune_func
         else:
             raise ValueError(f'The prune function must be one of {set(self.PRUNE_FUNCS)}.')
 
-        # Converts and shuffles the data.
+        # Converts the data types and marks target column.
         data = preprocess(data)
-        # # Cross validation.
-        # train_size = data.shape[0]*9//10
-        # val_size = data.shape[0] - train_size
 
-        # for i in range(10):
-        #     val = data.iloc[i*val_size:(i+1)*val_size]
-        #     train = pd.concat([data.iloc[:i*val_size], data.iloc[(i+1)*val_size]])
-        if self.algorithm == 'C4.5' and prune_func == 'Pessim':
+        # Define train/val sets.
+        if self.algorithm == 'CART' or (self.algorithm == 'C4.5' and prune_func == 'Pessim'):
             train = data
-            val = pd.DataFrame()
+            val = train
         else:
             train, val = train_test_split(data, test_size=0.33)
 
         # Generates the decision tree.
         self.root = self.generate_tree(train, val)
 
-        # Postprune the tree in postorder traversal.
-        self.postprune(self.root, self.PRUNE_FUNCS[self.prune_func])
+        if self.algorithm == 'C4.5':
+            # Postprune the tree in postorder traversal.
+            self.C4.5_postprune(self.root, self.PRUNE_FUNCS[self.prune_func])
+        else:
+            # Get alpha values by weakest link pruning.
+            alpha_values = self.get_alphas()
+            # Select best alpha by 10-fold CV.
+            train_size = data.shape[0]*9//10
+            val_size = data.shape[0] - train_size
+            for i in range(10):
+                val = data.iloc[i*val_size:(i+1)*val_size]
+                train = pd.concat([data.iloc[:i*val_size], data.iloc[(i+1)*val_size]])
+            for i, alpha in enumerate(alpha_values):
+                
 
     def __str__(self):
         tree_str = ''
@@ -89,7 +97,7 @@ class DecisionTree:
         """
         valid_attrs = [a for a in train.columns if a != 'target' and train[a].nunique() > 1]
         if target.nunique() == 1 or not valid_attrs or depth >= self.max_depth:
-            return Node(target.mode()[0], attr='leaf', threshold='', train=train, val=val)
+            return Node(target.mode()[0], attr='leaf', threshold='', val=val)
         # Keep only the valid attributes and the target column.
         train = train[valid_attrs + ['target']]
 
@@ -98,7 +106,7 @@ class DecisionTree:
         opt_attr, threshold = self.select_attr(train)
 
         # Create root node.
-        root = Node(target.mode()[0], attr=opt_attr, threshold='', train=train, val=val)
+        root = Node(target.mode()[0], attr=opt_attr, threshold='', val=val)
 
         # Branching.
         # Delete the opt_attr from attr set only if C4.5 and categorical.
@@ -108,7 +116,7 @@ class DecisionTree:
                 branch_val = val[val[opt_attr] == e]
                 if branch_train.empty:
                     # Generate a leaf node.
-                    Node(target.mode()[0], parent=root, attr='leaf', threshold=e, train=branch_train, val=branch_val)
+                    Node(target.mode()[0], parent=root, attr='leaf', threshold=e, val=branch_val)
                 else:
                     branch_train = branch_train.drop(columns=[opt_attr])
                     branch_val = branch_val.drop(columns=[opt_attr])
@@ -121,7 +129,7 @@ class DecisionTree:
                 branch_val = val.query(f'{opt_attr} {e} {threshold}')
                 if branch_train.empty:
                     # Generate a leaf node.
-                    Node(target.mode()[0], parent=root, attr='leaf', threshold=e, train=branch_train, val=branch_val)
+                    Node(target.mode()[0], parent=root, attr='leaf', threshold=e, val=branch_val)
                 else:
                     branch = self.generate_tree(branch_train, branch_val, depth=depth+1)
                     branch.parent = root
@@ -174,7 +182,7 @@ class DecisionTree:
         else:
             return metrics.get_cond_gini(df, attr, threshold)
 
-    def postprune(self, node, prune_func):
+    def C4.5_postprune(self, node, prune_func):
         """Postprune self.root in postorder traversal. Only use this function on a node s.t. node.height >= 1."""
         pruned = False
         if node.height == 1:

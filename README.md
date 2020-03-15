@@ -63,26 +63,26 @@ C4.5 uses a pruning technique called pessimistic pruning, which aims to avoid th
 
 Define $N(t) =$  number of training set examples at node t, $e(t) =$ number of example misclassified at node t. Then the error rate at t would be
 
-$$r(t) = \frac{e(t)}{N(t)}$$
+$$ R(t) = \frac{e(t)}{N(t)}. $$
 
 Apply the continuous correction, the error rate is estimated
 
-$$r'(t) = \frac{e(t) + 1/2}{N(t)}$$
+$$ R'(t) = \frac{e(t) + 1/2}{N(t)}. $$
 
 For a sub-tree $T_t$, whose root is node t, the corrected error rate is thus
 
-$$r'(T_t) = \frac{\sum(e(i) + 1/2)}{\sum N(i)} = \frac{\sum e(i) + N_t/2}{N(t)}$$
+$$ R'(T_t) = \frac{\sum(e(i) + 1/2)}{\sum N(i)} = \frac{\sum e(i) + |T_t|/2}{N(t)} $$
 
-where $N_t$ is the number of leaves in $T_t$. Since the expressions for $r'(t)$ and $r'(T_t)$ share the same denominator, we can instead calculate
+where $|T_t|$ is the number of leaves in $T_t$. Since the expressions for $R'(t)$ and $R'(T_t)$ share the same denominator, we can instead calculate
 
-$$n'(t) = e(t) + 1/2 \  \text{for a node}$$
-$$n'(T_t) = \sum e(i) + N_T/2 \ \text{for a sub-tree}$$
+$$ n'(t) = e(t) + 1/2 \  \text{for a node}, $$
+$$ n'(T_t) = \sum e(i) + N_{T_t}/2 \ \text{for a sub-tree}. $$
 
 With the training data, the sub-tree will always make fewer errors than the corresponding node. But this is not so if the corrected figures are used, since they also depend on the number of leaves. However, it is likely that even this corrected estimate of the number of misclassifications made by the sub-tree will be optimistic. So the algorithm only keeps the sub-tree if its corrected figure is more than one standard error better than the figure for the node.
 
 The standard error is derived from binomial distribution $B(N(t), p)$, where $p = n'(T_t)/N(t)$.
 
-$$ SE(n'(T_t)) = \sqrt{N(t) \times p \times (1-p)} = \sqrt{\frac{n'(T_t) \times (N(t) - n'(T_t))}{N(t)}}$$
+$$ SE(n'(T_t)) = \sqrt{N(t) \times p \times (1-p)} = \sqrt{\frac{n'(T_t) \times (N(t) - n'(T_t))}{N(t)}} $$
 
 The sub-tree $T_t$ is replaced with a single node $t$ if
 
@@ -90,18 +90,41 @@ $$ n'(T_t) - n'(t) > SE(n'(T_t)) $$
 
 ### CART
 
-CART's method belongs to the first family
+CART's method belongs to the cost-complexity pruning family. Like C4.5, it only depends on the training data. The pruning algorithm aims to minimize the cost-complexity function
+$$ C_\alpha(T) = R(T) + \alpha |T| $$
+where $R(T)$ and $|T|$ refer to tree $T$'s error rate and number of leaves.
+
+To solve the optimization problem, we use weakest link pruning:
++ Starting with the initial tree $T^0$, substitute a sub-tree $T_t$ with a leaf node $t$ to obtain $T^1$ by minimizing 
+$$ \frac{R(T^1) - R(T^0)}{|T^0| - |T^1|} = \frac{R(t) - R(T_t)}{|T_t| - 1}. $$
++ Iterate this pruning to obtain a sequence $T^0, T^1, \ldots, T^m$ where $T^m$ is the null tree.
++ Select the optimal tree $T^i$ by cross validation.
+
+As shown [here](https://stats.stackexchange.com/questions/193538/how-to-choose-alpha-in-cost-complexity-pruning#), 
+$$ C_\alpha(T - T_t) - C_\alpha(T) = R(t) - R(T_t) + \alpha (1 - |T_t|).$$
+Equate the above expression to $0$, we get
+$$ \alpha = \frac{R(t) - R(T_t)}{|T_t| - 1}. $$
+
+The tree sequence and the corresponding $\alpha$-values satisfy:
+$$ T^0 \supseteq T^1 \supseteq \ldots \supseteq T^m, $$
+$$ 0 = \alpha^0 \leq \alpha^1 \leq \ldots \leq \alpha^{n-1} \leq \alpha^m. $$
+ 
+$\alpha$ is selected out of $\{\alpha^1, \ldots, \alpha^m\}$ by 10-fold cross validation:
++ Split the training points into 10 folds.
++ For $k = 1, \ldots, 10$, using every fold except the $k$th:
+  + Construct a sequence of trees $T^0, T^1, \ldots, T^m$ for $\alpha \in \{\alpha^1, \ldots, \alpha^m\}$.
+  + For each tree $T^i$, calculate the $R(T^i)$ on the validation set, i.e. the $k$th set.
++ Select parameter $\alpha$ that minimizes the average the validation error.
 
 ## Reference
 
 1. J. Ross Quinlan. C4.5: programs for machine learning (1993).
    https://dl.acm.org/doi/book/10.5555/152181
 
-2. Mingers, J. An Empirical Comparison of Pruning Methods for Decision Tree Induction. *Machine Learning*  **4,** 227–243 (1989).
+2. Mingers, J. An Empirical Comparison of Pruning Methods for Decision Tree Induction. Machine Learning, 4, 227–243 (1989).
    https://doi.org/10.1023/A:1022604100933
 
-3. Steinberg, Dan A. Chapter 10 CART : Classification and Regression Trees (2009).
-   https://www.taylorfrancis.com/books/e/9780429138423/chapters/10.1201/9781420089653-17
+3. ESL
 
 4. Decision tree pruning. Wikipedia.
    https://en.wikipedia.org/wiki/Decision_tree_pruning
