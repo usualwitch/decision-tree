@@ -38,6 +38,4 @@ def pessimistic_error(node):
     return True
 
 
-# def cost_complexity(node):
-#     """Only use this function on a node s.t. node.height == 1."""
-#     pass
+def weakest_link

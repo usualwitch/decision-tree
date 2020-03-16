@@ -19,6 +19,10 @@ with open('dt.txt', 'w') as f:
     print(dt, file=f)
 ```
 
+## Algorithms
+
+The algorithms are explained in [this post](https://blog.usualwitch.now.sh/posts/decision-tree/).
+
 ## License
 
 [MIT](https://choosealicense.com/licenses/mit/)

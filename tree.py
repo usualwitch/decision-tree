@@ -59,8 +59,10 @@ class DecisionTree:
             for i in range(10):
                 val = data.iloc[i*val_size:(i+1)*val_size]
                 train = pd.concat([data.iloc[:i*val_size], data.iloc[(i+1)*val_size]])
-            for i, alpha in enumerate(alpha_values):
-                
+                for k, alpha in enumerate(alpha_values):
+                    
+                    
+   
 
     def __str__(self):
         tree_str = ''
