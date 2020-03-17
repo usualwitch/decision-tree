@@ -41,9 +41,16 @@ def get_cond_gini(df, attr, threshold):
     l_gini = get_gini(l_part, 'target')
     return (r_gini*r_part.shape[0] + l_gini*l_part.shape[0])/(r_part.shape[0] + l_part.shape[0])
 
-
+# TODO Modify
 def cost_complexity_loss(root, val, alpha):
     """Returns CART's cost-complexity cost."""
     if root.val.empty:
         raise ValueError('No validation set for this node.')
     return prune.error(root)/root.val.shape[0] + alpha*len(root.leaves)
+
+# TODO Modift
+def val_acc(root):
+    """Returns the tree's validation accuracy."""
+    if root.val.empty:
+        raise ValueError('No validation set for this node.')
+    return sum(prune.error(leaf) for leaf in root.leaves)

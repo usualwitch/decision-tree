@@ -61,6 +61,9 @@ class DecisionTree:
         # Prune the decision tree.
         self.postprune()
 
+        # Print test accuracy.
+        print(metrics.)
+
     def __str__(self):
         tree_str = ''
         for i, (pre, _, node) in enumerate(RenderTree(self.root, style=ContRoundStyle())):
@@ -207,6 +210,7 @@ class DecisionTree:
                         loss_table[i].append(np.inf)
             loss_table = pd.DataFrame(loss_table)
             mean_loss = loss_table.mean()
+            print(mean_loss)
             if self.ose_rule:
                 se = mean_loss.std()
                 opt_alpha = alpha_values[[i for i in range(len(alpha_values)) if mean_loss[i] <= mean_loss.min() + se][-1]]
@@ -233,7 +237,7 @@ class DecisionTree:
             node.attr = 'leaf'
 
     def get_alphas(self):
-        """Create a sequence of trees by weakest link pruning, and calculate alpha values."""
+        """Creates a sequence of trees by weakest link pruning, and calculates alpha values."""
         # Create a deepcopy of self.root.
         root = copy.deepcopy(self.root)
         # Include all levels except leaves.
@@ -248,3 +252,34 @@ class DecisionTree:
                 node.children = ()
         alpha_values = list(set(alpha_values))
         return sorted(alpha_values)
+
+# TODO Test this function
+    def predict(self, data):
+        """
+        Returns prediction results for data of the decision tree.
+
+        If data contains valid target column, this function also prints out accuracy.
+        """
+        def rec_predict(data, node):
+            # If node is a leaf, set prediction, jump out of recursion.
+            if node.is_leaf:
+                data['prediction'] = node.name
+            # Recursion.
+            if is_categorical_dtype(data[node.attr]) and self.algorithm == 'C4.5':
+                for child in node.children:
+                    branch_data = data[data[node.attr] == child.threshold]
+                    rec_predict(branch_data, child)
+            else:
+                for child in node.children:
+                    branch_data = data.query(f'{node.attr} {child.threshold}')
+                    rec_predict(branch_data, child)
+
+        labeled = 'target' in data.columns
+        data = preprocess(data, labeled=labeled)
+        rec_predict(data, self.root)
+
+        if labeled:
+            acc = (data['prediction'] == data['target']).sum()/data.shape[0]
+            return acc, data['prediction']
+        else:
+            return data['prediction']
