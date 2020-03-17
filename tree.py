@@ -1,9 +1,10 @@
-from anytree import Node, RenderTree
+from anytree import Node, RenderTree, LevelOrderGroupIter
 from anytree.render import ContRoundStyle
 import numpy as np
 import pandas as pd
 from pandas.api.types import is_categorical_dtype
 from sklearn.model_selection import train_test_split
+import copy
 
 from preprocess import preprocess
 import metrics
@@ -13,15 +14,25 @@ import prune
 class DecisionTree:
 
     ALGOS = {'C4.5', 'CART'}
-    PRUNE_FUNCS = {'Reduce': prune.reduced_error, 'Pessim': prune.pessimistic_error}
+    PRUNE_FUNCS = {'Reduce': prune.reduced_error_prune, 'Pessim': prune.pessimistic_error_prune}
 
-    def __init__(self, data, algorithm='CART', prune_func=None, max_depth=10):
-        """Supported algorithms: 'C4.5', 'CART'."""
+    def __init__(self, data, algorithm='CART', prune_func=None, max_depth=10, ose_rule=False):
+        """
+        Supported algorithms: 'C4.5', 'CART'.
+
+        CART does not support custom prune function. Supported prune functions for C4.5: 'Reduce', 'Pessim', 'Feature'.
+
+        max_depth: positive int, the max depth of the decision tree.
+
+        ose_rule: bool, whether to apply one standard error rule in CART's hyperparameter tuning.
+        """
         # Configuration.
         if algorithm not in self.ALGOS:
             raise ValueError(f'The algorithm must be one of {self.ALGOS}.')
         self.algorithm = algorithm
+        self.prune_func = prune_func
         self.max_depth = max_depth
+        self.ose_rule = ose_rule
 
         if self.prune_func in self.PRUNE_FUNCS:
             if self.algorithm == 'C4.5':
@@ -35,34 +46,20 @@ class DecisionTree:
             raise ValueError(f'The prune function must be one of {set(self.PRUNE_FUNCS)}.')
 
         # Converts the data types and marks target column.
-        data = preprocess(data)
+        self.data = preprocess(data)
 
         # Define train/val sets.
         if self.algorithm == 'CART' or (self.algorithm == 'C4.5' and prune_func == 'Pessim'):
-            train = data
+            train = self.data
             val = train
         else:
-            train, val = train_test_split(data, test_size=0.33)
+            train, val = train_test_split(self.data, test_size=0.33)
 
         # Generates the decision tree.
         self.root = self.generate_tree(train, val)
 
-        if self.algorithm == 'C4.5':
-            # Postprune the tree in postorder traversal.
-            self.C4.5_postprune(self.root, self.PRUNE_FUNCS[self.prune_func])
-        else:
-            # Get alpha values by weakest link pruning.
-            alpha_values = self.get_alphas()
-            # Select best alpha by 10-fold CV.
-            train_size = data.shape[0]*9//10
-            val_size = data.shape[0] - train_size
-            for i in range(10):
-                val = data.iloc[i*val_size:(i+1)*val_size]
-                train = pd.concat([data.iloc[:i*val_size], data.iloc[(i+1)*val_size]])
-                for k, alpha in enumerate(alpha_values):
-                    
-                    
-   
+        # Prune the decision tree.
+        self.postprune()
 
     def __str__(self):
         tree_str = ''
@@ -144,6 +141,7 @@ class DecisionTree:
         """
         # Store the scores for each attribute and the threshold for binary split.
         result = {'attr_name': [], 'score': [], 'threshold': []}
+
         for attr in train.columns[:-1]:
             result['attr_name'].append(attr)
             if is_categorical_dtype(train[attr].dtype):
@@ -157,6 +155,7 @@ class DecisionTree:
                 # Try using the midpoints of continous variable, all but the smallest point of discrete variable as threshold.
                 points = np.unique(np.sort(train[attr].values))
                 cut_points = (points[:-1] + points[1:])/2
+
             sub_scores = pd.DataFrame(cut_points, columns=['threshold'])
             sub_scores['score'] = sub_scores['threshold'].apply(lambda x: self.evaluate_split(train, attr, threshold=x))
             sub_opt = sub_scores.iloc[sub_scores['score'].idxmax()]
@@ -184,8 +183,36 @@ class DecisionTree:
         else:
             return metrics.get_cond_gini(df, attr, threshold)
 
-    def C4.5_postprune(self, node, prune_func):
-        """Postprune self.root in postorder traversal. Only use this function on a node s.t. node.height >= 1."""
+    def postprune(self):
+        if self.algorithm == 'C4.5':
+            # Postprune the tree in postorder traversal.
+            self.postprune(self.root, self.PRUNE_FUNCS[self.prune_func])
+        else:
+            # Gets sorted alpha values by weakest link pruning.
+            alpha_values = self.get_alphas()
+            # Selects best alpha by 10-fold CV.
+            train_size = self.data.shape[0]*9//10
+            val_size = self.data.shape[0] - train_size
+            loss_table = {i: [] for i in range(len(alpha_values))}
+            for k in range(10):
+                val = self.data.iloc[k*val_size:(k+1)*val_size]
+                train = self.data[~self.data.index.isin(val.index)]
+                for i, alpha in enumerate(alpha_values):
+                    tree_i = self.generate_tree(train, train)
+                    loss_table[i].append(metrics.cost_complexity_loss(tree_i, val, alpha))
+            loss_table = pd.DataFrame(loss_table)
+            mean_loss = loss_table.mean()
+            if self.ose_rule:
+                se = mean_loss.std()
+                opt_alpha = alpha_values[[i for i in range(len(alpha_values)) if mean_loss[i] <= mean_loss.min() + se][-1]]
+            else:
+                opt_alpha = alpha_values[[i for i in range(len(alpha_values)) if mean_loss[i] == mean_loss.min()][-1]]
+            print(f'The selected alpha is {opt_alpha}')
+            # Prune the tree using opt_alpha hyperparameter.
+            self.post_order_prune(self.root, lambda node: prune.cost_complexity_loss(node, opt_alpha))
+
+    def post_order_prune(self, node, prune_func):
+        """Postprune node in postorder traversal. Only use this function on a node s.t. node.height >= 1."""
         pruned = False
         if node.height == 1:
             pruned = prune_func(node)
@@ -194,8 +221,25 @@ class DecisionTree:
                 if child.is_leaf:
                     continue
                 # Recurse on a non-leaf child.
-                self.postprune(child, prune_func)
+                self.post_order_prune(child, prune_func)
             if node.height == 1:
                 pruned = prune_func(node)
         if pruned:
             node.attr = 'leaf'
+
+    def get_alphas(self):
+        """Create a sequence of trees by weakest link pruning, and calculate alpha values."""
+        # Create a deepcopy of self.root.
+        root = copy.deepcopy(self.root)
+        # Include all levels except leaves.
+        levels = [[node for node in level] for level in LevelOrderGroupIter(root)][::-1][1:]
+        alpha_values = [0]
+        for level in levels:
+            while level:
+                node = level.pop()
+                # Each time we prune a height==1 tree with 2 leaves.
+                alpha = prune.error_difference(node)/2
+                alpha_values.append(alpha)
+                node.children = ()
+        alpha_values = list(set(alpha_values))
+        return sorted(alpha_values)

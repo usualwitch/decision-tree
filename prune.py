@@ -5,20 +5,25 @@ def error(node):
     return node.val[node.val['target'] != node.name].shape[0]
 
 
-def reduced_error(node):
+def error_difference(node):
+    """Only use this function on a node s.t. node.height == 1."""
+    error_as_node = error(node)
+    error_as_subtree = sum(error(sub_node) for sub_node in node.children)
+    return error_as_node - error_as_subtree
+
+
+def reduced_error_prune(node):
     """Only use this function on a node s.t. node.height == 1."""
     # If we discard node's branches, node.val will be classified to node.name class.
     if node.val.empty:
         return False
-    error_as_node = error(node)
-    error_as_subtree = sum(error(sub_node) for sub_node in node.children)
-    if error_as_subtree >= error_as_node:
+    if error_difference(node) <= 0:
         node.children = ()
         return True
     return False
 
 
-def pessimistic_error(node):
+def pessimistic_error_prune(node):
     """
     Only use this function on a node s.t. node.height == 1.
 
@@ -38,4 +43,13 @@ def pessimistic_error(node):
     return True
 
 
-def weakest_link
+def cost_complexity_prune(node, alpha=0):
+    if node.val.empty:
+        node.children = ()
+        return True
+    error_as_node = error(node)/node.val.shape[0] + alpha
+    error_as_subtree = sum(error(sub_node) for sub_node in node.children)/node.val.shape[0] + alpha*len(node.leaves)
+    if error_as_subtree <= error_as_node:
+        node.children = ()
+        return True
+    return False
