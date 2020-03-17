@@ -214,7 +214,7 @@ class DecisionTree:
                 opt_alpha = alpha_values[[i for i in range(len(alpha_values)) if mean_loss[i] == mean_loss.min()][-1]]
             print(f'The selected alpha is {opt_alpha}')
             # Prune the tree using opt_alpha hyperparameter.
-            self.post_order_prune(self.root, lambda node: prune.cost_complexity_loss(node, opt_alpha))
+            self.post_order_prune(self.root, lambda node: prune.cost_complexity_prune(node, opt_alpha))
 
     def post_order_prune(self, node, prune_func):
         """Postprune node in postorder traversal. Only use this function on a node s.t. node.height >= 1."""
