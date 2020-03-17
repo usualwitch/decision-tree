@@ -190,6 +190,7 @@ class DecisionTree:
         else:
             # Gets sorted alpha values by weakest link pruning.
             alpha_values = self.get_alphas()
+            print(f'The alpha values are {alpha_values}.')
             # Selects best alpha by 10-fold CV.
             train_size = self.data.shape[0]*9//10
             val_size = self.data.shape[0] - train_size
@@ -197,9 +198,13 @@ class DecisionTree:
             for k in range(10):
                 val = self.data.iloc[k*val_size:(k+1)*val_size]
                 train = self.data[~self.data.index.isin(val.index)]
+                root_k = self.generate_tree(train, train)
                 for i, alpha in enumerate(alpha_values):
-                    tree_i = self.generate_tree(train, train)
-                    loss_table[i].append(metrics.cost_complexity_loss(tree_i, val, alpha))
+                    tree_i = self.post_order_prune(root_k, lambda node: prune.cost_complexity_prune(node, alpha))
+                    if tree_i:
+                        loss_table[i].append(metrics.cost_complexity_loss(tree_i, val, alpha))
+                    else:
+                        loss_table[i].append(np.inf)
             loss_table = pd.DataFrame(loss_table)
             mean_loss = loss_table.mean()
             if self.ose_rule:

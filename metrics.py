@@ -1,6 +1,8 @@
 from pandas.api.types import is_categorical_dtype
 import numpy as np
 
+import prune
+
 
 def get_proportion(df, attr):
     return df[attr].value_counts()/df[attr].shape[0]
@@ -42,4 +44,6 @@ def get_cond_gini(df, attr, threshold):
 
 def cost_complexity_loss(root, val, alpha):
     """Returns CART's cost-complexity cost."""
-    return
+    if root.val.empty:
+        raise ValueError('No validation set for this node.')
+    return prune.error(root)/root.val.shape[0] + alpha*len(root.leaves)
