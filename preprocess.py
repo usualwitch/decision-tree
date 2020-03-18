@@ -16,8 +16,8 @@ def preprocess(df, labeled=True):
         elif is_categorical_dtype(col_dtype) and df[col].cat.ordered:
             continue
         else:
-            df[col] = df[col].astype('category')
-        df[col] = df[col].cat.as_ordered()
+            df.loc[:, col] = df[col].astype('category')
+        df.loc[:, col] = df[col].cat.as_ordered()
 
     if labeled:
         if not is_categorical_dtype(df.iloc[:, -1].dtype):

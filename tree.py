@@ -2,11 +2,10 @@ from anytree import Node, RenderTree, LevelOrderGroupIter
 from anytree.render import ContRoundStyle
 import numpy as np
 import pandas as pd
-from pandas.api.types import is_categorical_dtype
+from pandas.api.types import is_categorical_dtype, is_numeric_dtype
 from sklearn.model_selection import train_test_split
 import copy
 
-from preprocess import preprocess
 import metrics
 import prune
 
@@ -16,7 +15,7 @@ class DecisionTree:
     ALGOS = {'C4.5', 'CART'}
     PRUNE_FUNCS = {'Reduce': prune.reduced_error_prune, 'Pessim': prune.pessimistic_error_prune}
 
-    def __init__(self, data, algorithm='CART', prune_func=None, max_depth=10, ose_rule=False):
+    def __init__(self, data, algorithm='CART', prune_func=None, max_depth=100, ose_rule=False):
         """
         Supported algorithms: 'C4.5', 'CART'.
 
@@ -45,9 +44,7 @@ class DecisionTree:
         else:
             raise ValueError(f'The prune function must be one of {set(self.PRUNE_FUNCS)}.')
 
-        # Converts the data types and marks target column.
-        self.data = preprocess(data)
-
+        self.data = data
         # Define train/val sets.
         if self.algorithm == 'CART' or (self.algorithm == 'C4.5' and prune_func == 'Pessim'):
             train = self.data
@@ -62,13 +59,17 @@ class DecisionTree:
         self.postprune()
 
         # Print test accuracy.
-        print(metrics.)
+        # print(metrics.)
 
     def __str__(self):
         tree_str = ''
         for i, (pre, _, node) in enumerate(RenderTree(self.root, style=ContRoundStyle())):
             if i == 0:
-                tree_str += (self.root.attr + '\n')
+                if self.root.attr != 'leaf':
+                    tree_str += (self.root.attr + '\n')
+                else:
+                    # Only one node in the tree.
+                    tree_str += self.root.name
             else:
                 if node.attr == 'leaf':
                     tree_str += (pre + f'{node.threshold}->{node.name}\n')
@@ -127,8 +128,12 @@ class DecisionTree:
                     branch.threshold = e
         else:
             for e in ['>=', '<']:
-                branch_train = train.query(f'{opt_attr} {e} {threshold}')
-                branch_val = val.query(f'{opt_attr} {e} {threshold}')
+                if not isinstance(threshold, str):
+                    branch_train = train.query(f"{opt_attr} {e} {threshold}")
+                    branch_val = train.query(f"{opt_attr} {e} {threshold}")
+                else:
+                    branch_train = train.query(f"{opt_attr} {e} '{threshold}'")
+                    branch_val = val.query(f"{opt_attr} {e} '{threshold}'")
                 if branch_train.empty:
                     # Generate a leaf node.
                     Node(target.mode()[0], parent=root, attr='leaf', threshold=e, val=branch_val)
@@ -189,28 +194,28 @@ class DecisionTree:
     def postprune(self):
         if self.algorithm == 'C4.5':
             # Postprune the tree in postorder traversal.
-            self.postprune(self.root, self.PRUNE_FUNCS[self.prune_func])
+            self.post_order_prune(self.root, self.PRUNE_FUNCS[self.prune_func])
         else:
             # Gets sorted alpha values by weakest link pruning.
             alpha_values = self.get_alphas()
             print(f'The alpha values are {alpha_values}.')
-            # Selects best alpha by 10-fold CV.
+            # Selects best alpha by 3-fold CV.
             train_size = self.data.shape[0]*9//10
             val_size = self.data.shape[0] - train_size
             loss_table = {i: [] for i in range(len(alpha_values))}
-            for k in range(10):
+            for k in range(3):
                 val = self.data.iloc[k*val_size:(k+1)*val_size]
                 train = self.data[~self.data.index.isin(val.index)]
                 root_k = self.generate_tree(train, train)
                 for i, alpha in enumerate(alpha_values):
-                    tree_i = self.post_order_prune(root_k, lambda node: prune.cost_complexity_prune(node, alpha))
+                    tree_i = copy.deepcopy(root_k)
+                    self.post_order_prune(tree_i, lambda node: prune.cost_complexity_prune(node, alpha))
                     if tree_i:
-                        loss_table[i].append(metrics.cost_complexity_loss(tree_i, val, alpha))
+                        loss_table[i].append(self.cost_complexity_loss(val, tree_i, alpha))
                     else:
                         loss_table[i].append(np.inf)
             loss_table = pd.DataFrame(loss_table)
             mean_loss = loss_table.mean()
-            print(mean_loss)
             if self.ose_rule:
                 se = mean_loss.std()
                 opt_alpha = alpha_values[[i for i in range(len(alpha_values)) if mean_loss[i] <= mean_loss.min() + se][-1]]
@@ -253,33 +258,47 @@ class DecisionTree:
         alpha_values = list(set(alpha_values))
         return sorted(alpha_values)
 
-# TODO Test this function
-    def predict(self, data):
+    def predict(self, data, root=None):
         """
         Returns prediction results for data of the decision tree.
 
         If data contains valid target column, this function also prints out accuracy.
         """
-        def rec_predict(data, node):
+        def rec_predict(rows, node):
             # If node is a leaf, set prediction, jump out of recursion.
             if node.is_leaf:
-                data['prediction'] = node.name
+                data.loc[rows, 'prediction'] = node.name
+                return
             # Recursion.
-            if is_categorical_dtype(data[node.attr]) and self.algorithm == 'C4.5':
+            if is_categorical_dtype(data.loc[rows, node.attr].dtype) and self.algorithm == 'C4.5':
                 for child in node.children:
-                    branch_data = data[data[node.attr] == child.threshold]
-                    rec_predict(branch_data, child)
+                    branch_rows = data[data[node.attr] == child.threshold].index
+                    rec_predict(branch_rows, child)
             else:
                 for child in node.children:
-                    branch_data = data.query(f'{node.attr} {child.threshold}')
-                    rec_predict(branch_data, child)
+                    sign = '>=' if child.threshold.startswith('>=') else '<'
+                    threshold = child.threshold.strip('>=<')
+                    if threshold.isnumeric():
+                        branch_rows = data.query(f"{node.attr} {sign} {threshold}").index
+                    else:
+                        branch_rows = data.query(f"{node.attr} {sign} '{threshold}'").index
+                    rec_predict(branch_rows, child)
 
         labeled = 'target' in data.columns
-        data = preprocess(data, labeled=labeled)
-        rec_predict(data, self.root)
+        data['prediction'] = self.data.loc[self.data.index[0], 'target']
+        if root is None:
+            root = self.root
+        rec_predict(data.index, root)
 
         if labeled:
             acc = (data['prediction'] == data['target']).sum()/data.shape[0]
+            print(f'The test accuracy is {acc*100:.2f}%')
             return acc, data['prediction']
         else:
             return data['prediction']
+
+    def cost_complexity_loss(self, val, root, alpha):
+        """Returns CART's cost-complexity cost."""
+        acc, _ = self.predict(val, root)
+        error_rate = 1 - acc
+        return error_rate + alpha * len(root.leaves)
