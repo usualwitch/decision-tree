@@ -8,16 +8,21 @@ A 10-fold CV is applied to evaluate the performance of algorithms.
 
 Clone the repo and run the code.
 
-```python
-import pandas as pd
-from tree import DecisionTree
-
-
-df = pd.read_csv('data/balance_scale.csv')
-dt = DecisionTree(df, algorithm='C4.5')
-with open('dt.txt', 'w') as f:
-    print(dt, file=f)
 ```
+import pandas as pd
+from sklearn.model_selection import train_test_split
+
+from tree import DecisionTree
+from preprocess import preprocess
+
+
+df = pd.read_csv('data/titanic.csv')
+df = preprocess(df)
+train, test = train_test_split(df, test_size=0.33)
+dt = DecisionTree(train, algorithm='C4.5', max_depth=100)
+dt.predict(test)
+```
+
 
 ## Algorithms
 

@@ -1,0 +1,23 @@
+odor
+├── n->gill_size
+│   ├── b->ring_number
+│   │   ├── o->e
+│   │   ╰── t->spore_print_color
+│   │       ├── w->e
+│   │       ╰── r->p
+│   ╰── n->stalk_surface_above_ring
+│       ├── k->p
+│       ├── s->bruises
+│       │   ├── f->e
+│       │   ╰── t->p
+│       ├── f->e
+│       ╰── y->p
+├── y->p
+├── a->e
+├── f->p
+├── l->e
+├── c->p
+├── s->p
+├── p->p
+╰── m->p
+

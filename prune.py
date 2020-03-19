@@ -2,7 +2,7 @@ import math
 
 
 def error(node):
-    return node.val[node.val['target'] != node.name].shape[0]
+    return (node.val[node.val['target'] != node.name]).shape[0]
 
 
 def error_difference(node):
@@ -49,6 +49,17 @@ def cost_complexity_prune(node, alpha=0):
         return True
     error_as_node = error(node)/node.val.shape[0] + alpha
     error_as_subtree = sum(error(sub_node) for sub_node in node.children)/node.val.shape[0] + alpha*len(node.leaves)
+    if error_as_subtree <= error_as_node:
+        node.children = ()
+        return True
+    return False
+
+def cost_complexity_squared_prune(node, alpha=0):
+    if node.val.empty:
+        node.children = ()
+        return True
+    error_as_node = error(node)/node.val.shape[0] + alpha
+    error_as_subtree = sum(error(sub_node) for sub_node in node.children)/node.val.shape[0] + alpha*len(node.leaves)**2
     if error_as_subtree <= error_as_node:
         node.children = ()
         return True

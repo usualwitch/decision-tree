@@ -2,7 +2,7 @@ from anytree import Node, RenderTree, LevelOrderGroupIter
 from anytree.render import ContRoundStyle
 import numpy as np
 import pandas as pd
-from pandas.api.types import is_categorical_dtype, is_numeric_dtype
+from pandas.api.types import is_categorical_dtype
 from sklearn.model_selection import train_test_split
 import copy
 
@@ -13,7 +13,7 @@ import prune
 class DecisionTree:
 
     ALGOS = {'C4.5', 'CART'}
-    PRUNE_FUNCS = {'Reduce': prune.reduced_error_prune, 'Pessim': prune.pessimistic_error_prune}
+    PRUNE_FUNCS = {'Reduce': prune.reduced_error_prune, 'Pessim': prune.pessimistic_error_prune, 'Comp': lambda x: prune.cost_complexity_prune(x, 0.1), 'CompSqr': lambda x: prune.cost_complexity_squared_prune(x, 0.01)}
 
     def __init__(self, data, algorithm='CART', prune_func=None, max_depth=100, ose_rule=False):
         """
@@ -50,16 +50,17 @@ class DecisionTree:
             train = self.data
             val = train
         else:
-            train, val = train_test_split(self.data, test_size=0.33)
+            train, val = train_test_split(self.data, test_size=0.2)
 
         # Generates the decision tree.
         self.root = self.generate_tree(train, val)
+        with open('unpruned_tree.txt', 'w') as f:
+            print(self, file=f)
 
         # Prune the decision tree.
         self.postprune()
-
-        # Print test accuracy.
-        # print(metrics.)
+        with open('pruned_tree.txt', 'w') as f:
+            print(self, file=f)
 
     def __str__(self):
         tree_str = ''
@@ -69,7 +70,7 @@ class DecisionTree:
                     tree_str += (self.root.attr + '\n')
                 else:
                     # Only one node in the tree.
-                    tree_str += self.root.name
+                    tree_str += str(self.root.name)
             else:
                 if node.attr == 'leaf':
                     tree_str += (pre + f'{node.threshold}->{node.name}\n')
@@ -210,6 +211,9 @@ class DecisionTree:
                 for i, alpha in enumerate(alpha_values):
                     tree_i = copy.deepcopy(root_k)
                     self.post_order_prune(tree_i, lambda node: prune.cost_complexity_prune(node, alpha))
+                    # See tree output.
+                    with open(f'{alpha}_cv{k}', 'w') as f:
+                        print(RenderTree(tree_i), file=f)
                     if tree_i:
                         loss_table[i].append(self.cost_complexity_loss(val, tree_i, alpha))
                     else:
@@ -278,7 +282,12 @@ class DecisionTree:
                 for child in node.children:
                     sign = '>=' if child.threshold.startswith('>=') else '<'
                     threshold = child.threshold.strip('>=<')
-                    if threshold.isnumeric():
+                    try:
+                        float(threshold)
+                        is_numeric = True
+                    except ValueError:
+                        is_numeric = False
+                    if is_numeric:
                         branch_rows = data.query(f"{node.attr} {sign} {threshold}").index
                     else:
                         branch_rows = data.query(f"{node.attr} {sign} '{threshold}'").index
