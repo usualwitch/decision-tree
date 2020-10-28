@@ -16,7 +16,7 @@ from tree import DecisionTree
 from preprocess import preprocess
 
 
-df = pd.read_csv('data/mushroons.csv')
+df = pd.read_csv('data/mushrooms.csv')
 df = preprocess(df)
 train, test = train_test_split(df, test_size=0.33)
 dt = DecisionTree(train, algorithm='C4.5', max_depth=100)
