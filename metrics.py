@@ -4,39 +4,26 @@ import numpy as np
 import prune
 
 
-def get_proportion(df, attr):
-    return df[attr].value_counts()/df[attr].shape[0]
+def get_counts(y):
+    _, counts = np.unique(y, return_counts=True)
+    return counts
 
 
-def get_entropy(df, attr):
-    proportion = get_proportion(df, attr)
-    return - (proportion*np.log2(proportion)).sum()
+def get_entropy(counts):
+    proportions = counts / counts.sum()
+    return - (proportions*np.log2(proportions)).sum()
 
 
-def get_cond_entropy(df, attr, threshold=None):
-    if is_categorical_dtype(df[attr].dtype):
-        sub_entropies = df.groupby(attr).apply(lambda df: get_entropy(df, 'target'))
-        proportion = get_proportion(df, attr)
-        return (sub_entropies*proportion).sum()
+def get_conditional_entropy(x, x_values, x_counts, y, threshold=None):
+    if threshold is None:
+        sub_entropies = np.array([get_entropy(get_counts(y[np.where(x == e)])) for e in x_values])
+        proportions = x_counts / x_counts.sum()
+        return (sub_entropies*proportions).sum()
     else:
-        if threshold is None:
-            raise ValueError('Must provide threshold for continuous variables.')
-        r_part = df[df[attr] >= threshold]
-        l_part = df[df[attr] < threshold]
-        r_entropy = get_entropy(r_part, 'target')
-        l_entropy = get_entropy(l_part, 'target')
-        return (r_entropy*r_part.shape[0] + l_entropy*l_part.shape[0])/(r_part.shape[0] + l_part.shape[0])
-
-
-def get_gini(df, attr):
-    proportion = get_proportion(df, attr)
-    return 1 - (proportion**2).sum()
-
-
-def get_cond_gini(df, attr, threshold):
-    """The data is divided into >= threshold part and < threshold part."""
-    r_part = df[df[attr] >= threshold]
-    l_part = df[df[attr] < threshold]
-    r_gini = get_gini(r_part, 'target')
-    l_gini = get_gini(l_part, 'target')
-    return (r_gini*r_part.shape[0] + l_gini*l_part.shape[0])/(r_part.shape[0] + l_part.shape[0])
+        l_indices = np.where(x <= threshold)
+        r_indices = np.where(x > threshold)
+        l_entropy = get_entropy(get_counts(y[l_indices]))
+        r_entropy = get_entropy(get_counts(y[r_indices]))
+        l_count = l_indices[0].shape[0]
+        r_count = r_indices[0].shape[0]
+        return (l_entropy*l_count + r_entropy*r_count)/x.shape[0]
