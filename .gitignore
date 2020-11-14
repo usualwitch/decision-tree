@@ -2,3 +2,4 @@
 .vim/*
 *.csv
 output/*
+decision_tree.egg-info/*

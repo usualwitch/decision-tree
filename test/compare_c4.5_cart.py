@@ -11,7 +11,7 @@ results = []
 columns = ['trial', 'name', 'tree', 'alpha', 'acc']
 
 
-for i in range(1, 2):
+for i in range(1, 11):
     for name in dataset_names:
         dataset = import_module('milksets.' + name)
         X_train, X_test, y_train, y_test = train_test_split(*dataset.load(), test_size=0.2, random_state=i)
