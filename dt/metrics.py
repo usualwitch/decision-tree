@@ -1,7 +1,4 @@
-from pandas.api.types import is_categorical_dtype
 import numpy as np
-
-import prune
 
 
 def get_counts(y):
@@ -27,3 +24,8 @@ def get_conditional_entropy(x, x_values, x_counts, y, threshold=None):
         l_count = l_indices[0].shape[0]
         r_count = r_indices[0].shape[0]
         return (l_entropy*l_count + r_entropy*r_count)/x.shape[0]
+
+
+def get_gini(counts):
+    proportions = counts / counts.sum()
+    return 1 - (proportions**2).sum()
